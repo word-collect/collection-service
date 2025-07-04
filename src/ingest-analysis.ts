@@ -3,6 +3,7 @@ const ddb = new DynamoDBClient({})
 const Table = process.env.TABLE!
 
 export const handler = async (event: any) => {
+  console.log('event', event)
   const { userSub, result } = event.detail
   const words = result.split(',')
 
