@@ -1,4 +1,4 @@
-import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb'
+import { DynamoDBClient, BatchWriteItemCommand } from '@aws-sdk/client-dynamodb'
 const ddb = new DynamoDBClient({})
 const Table = process.env.TABLE!
 
@@ -9,42 +9,36 @@ export const handler = async (event: any) => {
 
   console.log(`📝 writing ${words.length} words for ${userSub}`)
 
-  /* run the PutItem commands in parallel and capture every outcome */
-  const outcomes = await Promise.allSettled(
-    words.map((word: string) =>
-      ddb.send(
-        new PutItemCommand({
-          TableName: Table,
-          Item: {
-            userSub: { S: userSub },
-            word: { S: word },
-            notes: { S: '' }
-          }
-        })
-      )
-    )
-  )
+  const chunks: string[][] = []
+  for (let i = 0; i < words.length; i += 25) chunks.push(words.slice(i, i + 25))
 
-  /* summarise */
-  const failed = outcomes
-    .map((o, i) =>
-      o.status === 'rejected' ? { word: words[i], err: o.reason } : null
-    )
-    .filter(Boolean) as { word: string; err: unknown }[]
+  let saved = 0
+  let failed: string[] = []
 
-  const succeeded = words.length - failed.length
-  console.log(`✅ ${succeeded} succeeded, ❌ ${failed.length} failed`)
-
-  if (failed.length) {
-    console.error(
-      'Failed items:',
-      failed.map((f) => ({ word: f.word, error: (f.err as any).message }))
+  for (const chunk of chunks) {
+    const resp = await ddb.send(
+      new BatchWriteItemCommand({
+        RequestItems: {
+          [Table]: chunk.map((word) => ({
+            PutRequest: {
+              Item: {
+                userSub: { S: userSub },
+                word: { S: word },
+                notes: { S: '' }
+              }
+            }
+          }))
+        }
+      })
     )
+
+    const unprocessed = resp.UnprocessedItems?.[Table] ?? []
+    saved += chunk.length - unprocessed.length
+    failed.push(...unprocessed.map((x) => x.PutRequest!.Item!.word.S!))
   }
 
-  /* return something useful for DLQ / Step-Functions */
-  return {
-    saved: succeeded,
-    failed: failed.map((f) => f.word)
-  }
+  console.log(`✅ ${saved} succeeded, ❌ ${failed.length} failed`)
+  if (failed.length) console.error('Failed words:', failed)
+
+  return { saved, failed }
 }
