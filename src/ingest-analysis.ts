@@ -7,18 +7,26 @@ export const handler = async (event: any) => {
   const { userSub, result } = event.detail
   const words = result.split(',')
 
-  await Promise.all(
-    words.map((word: string) =>
-      ddb.send(
-        new PutItemCommand({
-          TableName: Table,
-          Item: {
-            userSub: { S: userSub },
-            word: { S: word },
-            notes: { S: '' }
-          }
-        })
-      )
+  console.log('words', words)
+
+  try {
+    await Promise.all(
+      words.map(async (word: string) => {
+        const res = await ddb.send(
+          new PutItemCommand({
+            TableName: Table,
+            Item: {
+              userSub: { S: userSub },
+              word: { S: word },
+              notes: { S: '' }
+            }
+          })
+        )
+        console.log('ddb res', res)
+      })
     )
-  )
+  } catch (error) {
+    console.error('ddb error', error)
+    throw error
+  }
 }
