@@ -47,7 +47,16 @@ export class CollectionStack extends cdk.Stack {
         allowOrigins: [
           'https://wordcollect.haydenturek.com',
           'http://localhost:3000'
-        ]
+        ],
+        allowMethods: [
+          apigwv2.CorsHttpMethod.GET,
+          apigwv2.CorsHttpMethod.POST,
+          apigwv2.CorsHttpMethod.PUT,
+          apigwv2.CorsHttpMethod.DELETE,
+          apigwv2.CorsHttpMethod.OPTIONS
+        ],
+        allowHeaders: ['authorization', 'content-type'],
+        allowCredentials: true
       }
     })
 
