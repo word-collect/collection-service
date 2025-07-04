@@ -7,26 +7,44 @@ export const handler = async (event: any) => {
   const { userSub, result } = event.detail
   const words = result.split(',')
 
-  console.log('words', words)
+  console.log(`📝 writing ${words.length} words for ${userSub}`)
 
-  try {
-    await Promise.all(
-      words.map(async (word: string) => {
-        const res = await ddb.send(
-          new PutItemCommand({
-            TableName: Table,
-            Item: {
-              userSub: { S: userSub },
-              word: { S: word },
-              notes: { S: '' }
-            }
-          })
-        )
-        console.log('ddb res', res)
-      })
+  /* run the PutItem commands in parallel and capture every outcome */
+  const outcomes = await Promise.allSettled(
+    words.map((word: string) =>
+      ddb.send(
+        new PutItemCommand({
+          TableName: Table,
+          Item: {
+            userSub: { S: userSub },
+            word: { S: word },
+            notes: { S: '' }
+          }
+        })
+      )
     )
-  } catch (error) {
-    console.error('ddb error', error)
-    throw error
+  )
+
+  /* summarise */
+  const failed = outcomes
+    .map((o, i) =>
+      o.status === 'rejected' ? { word: words[i], err: o.reason } : null
+    )
+    .filter(Boolean) as { word: string; err: unknown }[]
+
+  const succeeded = words.length - failed.length
+  console.log(`✅ ${succeeded} succeeded, ❌ ${failed.length} failed`)
+
+  if (failed.length) {
+    console.error(
+      'Failed items:',
+      failed.map((f) => ({ word: f.word, error: (f.err as any).message }))
+    )
+  }
+
+  /* return something useful for DLQ / Step-Functions */
+  return {
+    saved: succeeded,
+    failed: failed.map((f) => f.word)
   }
 }
