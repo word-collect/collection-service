@@ -6,6 +6,8 @@ import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2'
 import * as integ from 'aws-cdk-lib/aws-apigatewayv2-integrations'
 import * as apigwAuth from 'aws-cdk-lib/aws-apigatewayv2-authorizers'
 import * as ssm from 'aws-cdk-lib/aws-ssm'
+import * as events from 'aws-cdk-lib/aws-events'
+import * as targets from 'aws-cdk-lib/aws-events-targets'
 
 export interface CollectionStackProps extends cdk.StackProps {
   appName: string
@@ -16,6 +18,12 @@ export class CollectionStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: CollectionStackProps) {
     super(scope, id, props)
     const { appName, environment } = props
+
+    const eventBus = events.EventBus.fromEventBusName(
+      this,
+      'SharedEventBus',
+      cdk.Fn.importValue(`${appName}-${environment}-event-bus-name`)
+    )
 
     /* ── 1. DynamoDB table (PK=userSub, SK=word) ─────────────── */
     const table = new dynamodb.Table(this, 'Table', {
@@ -31,6 +39,12 @@ export class CollectionStack extends cdk.Stack {
       environment: { TABLE: table.tableName }
     })
     table.grantReadWriteData(fn)
+
+    const ingestFn = new lambda.NodejsFunction(this, 'IngestHandler', {
+      entry: 'src/ingest-analysis.ts',
+      environment: { TABLE: table.tableName }
+    })
+    table.grantWriteData(ingestFn) // change if it needs to read
 
     /* ── 3. HTTP API secured by Cognito JWT ─────────────────── */
     const poolId = ssm.StringParameter.valueForStringParameter(
@@ -76,6 +90,16 @@ export class CollectionStack extends cdk.Stack {
       ],
       integration: new integ.HttpLambdaIntegration('Int', fn),
       authorizer
+    })
+
+    // events
+    new events.Rule(this, 'AnalysisReadyToCollection', {
+      eventBus,
+      eventPattern: {
+        source: ['extraction-service'],
+        detailType: ['AnalysisReady']
+      },
+      targets: [new targets.LambdaFunction(ingestFn)]
     })
 
     /* ── 4. Expose the endpoint via SSM ──────────────────────── */
