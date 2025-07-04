@@ -1,9 +1,16 @@
 import { DynamoDBClient, BatchWriteItemCommand } from '@aws-sdk/client-dynamodb'
-const ddb = new DynamoDBClient({})
+import {
+  EventBridgeClient,
+  PutEventsCommand
+} from '@aws-sdk/client-eventbridge'
+
 const Table = process.env.TABLE!
+const busName = process.env.BUS_NAME!
+
+const ddb = new DynamoDBClient({})
+const eb = new EventBridgeClient({})
 
 export const handler = async (event: any) => {
-  console.log('event', event)
   const { userSub, result } = event.detail
   const words = result.split(',')
 
@@ -39,6 +46,19 @@ export const handler = async (event: any) => {
 
   console.log(`✅ ${saved} succeeded, ❌ ${failed.length} failed`)
   if (failed.length) console.error('Failed words:', failed)
+
+  await eb.send(
+    new PutEventsCommand({
+      Entries: [
+        {
+          EventBusName: busName,
+          Source: 'collection-service',
+          DetailType: 'CollectionUpdated',
+          Detail: JSON.stringify({ userSub, saved, failed })
+        }
+      ]
+    })
+  )
 
   return { saved, failed }
 }

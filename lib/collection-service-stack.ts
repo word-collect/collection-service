@@ -42,11 +42,15 @@ export class CollectionStack extends cdk.Stack {
 
     const ingestFn = new lambda.NodejsFunction(this, 'IngestHandler', {
       entry: 'src/ingest-analysis.ts',
-      environment: { TABLE: table.tableName },
       memorySize: 1024,
-      timeout: cdk.Duration.minutes(1)
+      timeout: cdk.Duration.minutes(1),
+      environment: {
+        TABLE: table.tableName,
+        BUS_NAME: eventBus.eventBusName
+      }
     })
     table.grantWriteData(ingestFn) // change if it needs to read
+    eventBus.grantPutEventsTo(ingestFn)
 
     /* ── 3. HTTP API secured by Cognito JWT ─────────────────── */
     const poolId = ssm.StringParameter.valueForStringParameter(
