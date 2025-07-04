@@ -42,7 +42,14 @@ export class CollectionStack extends cdk.Stack {
       `/${appName}/${environment}/user-service/appClientId`
     )
 
-    const api = new apigwv2.HttpApi(this, 'Api')
+    const api = new apigwv2.HttpApi(this, 'Api', {
+      corsPreflight: {
+        allowOrigins: [
+          'https://wordcollect.haydenturek.com',
+          'http://localhost:3000'
+        ]
+      }
+    })
 
     const authorizer = new apigwAuth.HttpJwtAuthorizer(
       'JwtAuth',
